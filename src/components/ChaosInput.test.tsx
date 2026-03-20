@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { ChaosInput } from './ChaosInput';
-import React from 'react';
+
 
 // Verification for Code Quality, a11y, and Testing constraints
 describe('ChaosInput Component Accessibility & Functionality', () => {

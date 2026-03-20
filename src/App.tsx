@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { ChaosInput } from './components/ChaosInput';
 import { ActionDashboard } from './components/ActionDashboard';
 import { processChaosInput } from './services/geminiService';

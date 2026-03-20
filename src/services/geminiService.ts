@@ -9,8 +9,7 @@ if (!apiKey || apiKey === "PASTE_YOUR_GEMINI_API_KEY_HERE") {
 }
 
 const ai = new GoogleGenAI({
-  apiKey: apiKey || "dummy-key",
-  dangerouslyAllowBrowser: true // Acknowledging frontend execution explicitly
+  apiKey: apiKey || "dummy-key"
 });
 
 const genericFileToBase64 = (file: File): Promise<string> => {
@@ -102,7 +101,7 @@ export const processChaosInput = async (
       throw new DOMException("Request was aborted", "AbortError");
     }
 
-    const t = typeof response.text === 'function' ? response.text() : response.text;
+    const t = response.text;
     if (t) {
       const parsed = JSON.parse(t);
       return parsed as ActionPayload;
@@ -113,9 +112,25 @@ export const processChaosInput = async (
   } catch (error: any) {
     // Structured error handling (Code Quality)
     console.error("Google Gemini Processing Error:", error);
-    if (error.message?.includes("API key not valid")) {
+    
+    // Check for Leaked/Revoked API Key Error
+    const errMsg = error.message || "";
+    if (errMsg.includes("leaked") || errMsg.includes("PERMISSION_DENIED") || error.code === 403 || error.status === 403) {
+      throw new Error(
+        "🚨 URGENT SECURITY ALERT: API KEY LEAKED\n\n" +
+        "Google's security scanners detected that your Gemini API key was exposed (likely committed to a public GitHub repository or pasted on a public site). To protect your account from unauthorized usage and billing, Google has automatically disabled this key.\n\n" +
+        "How to fix this issue:\n" +
+        "1. Go to Google AI Studio and delete the compromised API key.\n" +
+        "2. Generate a brand new API key.\n" +
+        "3. Update your `.env` file with the new key (`VITE_GEMINI_API_KEY=your_new_key`).\n" +
+        "4. Important: Ensure your `.env` file is listed in `.gitignore` so it never gets committed to public source control again."
+      );
+    }
+
+    if (errMsg.includes("API key not valid")) {
       throw new Error("The Google Gemini API Key is invalid or expired. Please check your credentials.");
     }
-    throw error;
+    
+    throw new Error(errMsg || "An unexpected error occurred while communicating with Google services.");
   }
 };
