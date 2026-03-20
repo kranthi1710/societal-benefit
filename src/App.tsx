@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { ChaosInput } from './components/ChaosInput';
 import { processChaosInput } from './services/geminiService';
+import { trackEvent, trackError, trackPageView } from './services/analyticsService';
 import type { ActionPayload } from './types';
 import { Activity } from 'lucide-react';
 
@@ -14,6 +15,8 @@ function App() {
   const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
+    // Track page view on mount (Google Analytics 4)
+    trackPageView();
     return () => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
@@ -29,14 +32,31 @@ function App() {
 
     setIsProcessing(true);
     setError(null);
+
+    // GA4: Track chaos input submission
+    trackEvent('chaos_submitted', {
+      has_image: file !== null,
+      text_length: text.length,
+    });
+
     try {
       const payload = await processChaosInput(text, file, abortControllerRef.current.signal);
       setActions(prev => [payload, ...prev]);
+
+      // GA4: Track successful action extraction
+      trackEvent('action_extracted', {
+        category: payload.category,
+        severity: payload.severity,
+        confidence: Math.round(payload.confidenceScore * 100),
+      });
     } catch (err: any) {
       if (err.name === 'AbortError') {
         console.log("Previous request aborted.");
       } else {
-        setError(err.message || 'An error occurred while communicating with Google services.');
+        const msg = err.message || 'Unknown error';
+        setError(msg);
+        // GA4: Track Gemini API errors
+        trackError(msg, false);
       }
     } finally {
       setIsProcessing(false);

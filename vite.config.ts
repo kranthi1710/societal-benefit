@@ -12,14 +12,50 @@ export default defineConfig({
       manifest: {
         name: 'Universal Bridge',
         short_name: 'Bridge',
+        description: 'Instantly translate unstructured human chaos into structured, life-saving system actions using Google Gemini AI.',
         theme_color: '#03040b',
+        background_color: '#03040b',
+        display: 'standalone',
+        orientation: 'portrait-primary',
+        scope: '/',
+        start_url: '/?source=pwa',
+        categories: ['utilities', 'productivity', 'medical'],
         icons: [
-          { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
-          { src: '/icon-512.png', sizes: '512x512', type: 'image/png' }
+          { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' }
+        ],
+        shortcuts: [
+          {
+            name: 'New Emergency Input',
+            short_name: 'Emergency',
+            description: 'Quickly submit a new emergency chaos input',
+            url: '/?action=emergency&source=shortcut',
+            icons: [{ src: '/icon-192.png', sizes: '192x192', type: 'image/png' }]
+          }
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}']
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'google-fonts-cache',
+              expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 },
+              cacheableResponse: { statuses: [0, 200] }
+            }
+          },
+          {
+            urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'google-fonts-webfonts',
+              expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 365 },
+              cacheableResponse: { statuses: [0, 200] }
+            }
+          }
+        ]
       }
     })
   ],
