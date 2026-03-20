@@ -3,7 +3,7 @@ import { ChaosInput } from './components/ChaosInput';
 import { processChaosInput } from './services/geminiService';
 import { trackEvent, trackError, trackPageView } from './services/analyticsService';
 import type { ActionPayload } from './types';
-import { Activity } from 'lucide-react';
+import { Activity, Cpu } from 'lucide-react';
 
 const ActionDashboard = React.lazy(() => import('./components/ActionDashboard').then(m => ({ default: m.ActionDashboard })));
 
@@ -11,6 +11,7 @@ function App() {
   const [actions, setActions] = useState<ActionPayload[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [streamingText, setStreamingText] = useState<string | null>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -32,6 +33,7 @@ function App() {
 
     setIsProcessing(true);
     setError(null);
+    setStreamingText('⚡ Gemini is thinking...');
 
     // GA4: Track chaos input submission
     trackEvent('chaos_submitted', {
@@ -40,8 +42,16 @@ function App() {
     });
 
     try {
-      const payload = await processChaosInput(text, file, abortControllerRef.current.signal);
+      const payload = await processChaosInput(
+        text,
+        file,
+        abortControllerRef.current.signal,
+        // Streaming callback — updates UI token-by-token
+        (partial) => setStreamingText(`⚡ Receiving... ${partial.length} chars`)
+      );
+
       setActions(prev => [payload, ...prev]);
+      setStreamingText(null);
 
       // GA4: Track successful action extraction
       trackEvent('action_extracted', {
@@ -50,6 +60,7 @@ function App() {
         confidence: Math.round(payload.confidenceScore * 100),
       });
     } catch (err: any) {
+      setStreamingText(null);
       if (err.name === 'AbortError') {
         console.log("Previous request aborted.");
       } else {
@@ -93,8 +104,31 @@ function App() {
             </div>
           )}
 
+          {/* Gemini Streaming Indicator */}
+          {streamingText && (
+            <div
+              role="status"
+              aria-live="polite"
+              style={{
+                display: 'flex', alignItems: 'center', gap: '0.75rem',
+                color: 'var(--brand-cyan)', fontSize: '0.9rem', fontWeight: 600,
+                padding: '0.75rem 1.25rem',
+                background: 'rgba(0,240,255,0.06)',
+                border: '1px solid rgba(0,240,255,0.2)',
+                borderRadius: '0.75rem',
+                maxWidth: '48rem',
+                margin: '0 auto',
+              }}
+            >
+              <Cpu size={16} aria-hidden="true" style={{ animation: 'spin 1.5s linear infinite' }} />
+              {streamingText}
+            </div>
+          )}
+
           <ChaosInput onSubmit={handleProcess} isProcessing={isProcessing} />
-          <ActionDashboard actions={actions} />
+          <React.Suspense fallback={null}>
+            <ActionDashboard actions={actions} />
+          </React.Suspense>
         </main>
       </div>
     </>

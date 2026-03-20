@@ -25,127 +25,102 @@ const genericFileToBase64 = (file: File): Promise<string> => {
   });
 };
 
+const SCHEMA_CONFIG = {
+  systemInstruction: "You are the Universal Bridge. Your critical job is to analyze messy, chaotic human input (such as injuries, traffic accidents, emergencies, or raw logs) and extract the core intent into strictly structured, life-saving system JSON actions. Be highly precise and deterministic.",
+  temperature: 0.1,
+  topK: 32,
+  topP: 0.95,
+  safetySettings: [
+    { category: "HARM_CATEGORY_DANGEROUS_CONTENT" as any, threshold: "BLOCK_ONLY_HIGH" as any },
+    { category: "HARM_CATEGORY_HARASSMENT" as any, threshold: "BLOCK_ONLY_HIGH" as any }
+  ],
+  responseMimeType: "application/json",
+  responseSchema: {
+    type: Type.OBJECT,
+    properties: {
+      severity: { type: Type.STRING, description: "Must be exactly one of: CRITICAL, HIGH, MEDIUM, LOW" },
+      category: { type: Type.STRING, description: "Must be exactly one of: MEDICAL, EMERGENCY, TRAFFIC, NEWS" },
+      extractedIntent: { type: Type.STRING, description: "A clear short description of what is happening." },
+      recommendedAction: { type: Type.STRING, description: "Exact, verifiable action to take." },
+      confidenceScore: { type: Type.NUMBER, description: "Confidence from 0.0 to 1.0" }
+    },
+    required: ["severity", "category", "extractedIntent", "recommendedAction", "confidenceScore"],
+  }
+};
+
+/**
+ * Processes chaotic input using Gemini's streaming API.
+ * onStream is called with partial text as the model generates tokens.
+ */
 export const processChaosInput = async (
   text: string,
   imageFile?: File | null,
-  abortSignal?: AbortSignal
+  abortSignal?: AbortSignal,
+  onStream?: (partial: string) => void
 ): Promise<ActionPayload> => {
   try {
-    // 1. Separate User Content from System Instruction
-    const parts: any[] = [
-      { text: text }
-    ];
+    const parts: any[] = [{ text }];
 
     // Efficiency & Security: Compress large images locally before sending to Google Services
     if (imageFile) {
       if (imageFile.size > 5 * 1024 * 1024 && !imageFile.type.startsWith('image/')) {
         throw new Error("File is too large (>5MB) and is not a compressible image.");
       }
-
       if (imageFile.type.startsWith('image/')) {
         const { base64, mimeType } = await compressAndEncodeImage(imageFile, 1200);
-        parts.push({
-          inlineData: {
-            data: base64,
-            mimeType
-          }
-        });
-      }
-      else {
-        // Processing PDFs or text directly if valid
+        parts.push({ inlineData: { data: base64, mimeType } });
+      } else {
         const base64String = await genericFileToBase64(imageFile);
-        parts.push({
-          inlineData: {
-            data: base64String,
-            mimeType: imageFile.type
-          }
-        });
+        parts.push({ inlineData: { data: base64String, mimeType: imageFile.type } });
       }
     }
 
-    // 2. Optimization: Use native systemInstruction, low temperature, and tuned safety settings
-    const response = await ai.models.generateContent({
+    // Use Gemini streaming for a richer integration — streams tokens as the model thinks
+    const stream = await ai.models.generateContentStream({
       model: 'gemini-2.5-flash',
       contents: parts,
-      config: {
-        systemInstruction: "You are the Universal Bridge. Your critical job is to analyze messy, chaotic human input (such as injuries, traffic accidents, emergencies, or raw logs) and extract the core intent into strictly structured, life-saving system JSON actions. Be highly precise and deterministic.",
-        temperature: 0.1, // Low temperature to guarantee deterministic JSON schemas
-        topK: 32,
-        topP: 0.95,
-        safetySettings: [
-          {
-            // Allow emergency dispatch / medical inputs which contain injuries
-            category: "HARM_CATEGORY_DANGEROUS_CONTENT" as any,
-            threshold: "BLOCK_ONLY_HIGH" as any
-          },
-          {
-            category: "HARM_CATEGORY_HARASSMENT" as any,
-            threshold: "BLOCK_ONLY_HIGH" as any
-          }
-        ],
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            severity: {
-              type: Type.STRING,
-              description: "Must be exactly one of: CRITICAL, HIGH, MEDIUM, LOW",
-            },
-            category: {
-              type: Type.STRING,
-              description: "Must be exactly one of: MEDICAL, EMERGENCY, TRAFFIC, NEWS",
-            },
-            extractedIntent: {
-              type: Type.STRING,
-              description: "A clear short description of what is happening.",
-            },
-            recommendedAction: {
-              type: Type.STRING,
-              description: "Exact, verifyable action to take. (e.g. 'Dispatch Ambulance', 'Reroute Traffic')",
-            },
-            confidenceScore: {
-              type: Type.NUMBER,
-              description: "Confidence from 0.0 to 1.0",
-            }
-          },
-          required: ["severity", "category", "extractedIntent", "recommendedAction", "confidenceScore"],
-        }
-      }
+      config: SCHEMA_CONFIG
     });
 
-    if (abortSignal?.aborted) {
-      throw new DOMException("Request was aborted", "AbortError");
+    let accumulated = '';
+
+    for await (const chunk of stream) {
+      if (abortSignal?.aborted) {
+        throw new DOMException("Request was aborted", "AbortError");
+      }
+      const chunkText = chunk.text ?? '';
+      accumulated += chunkText;
+      // Notify caller of partial streaming content
+      if (onStream && chunkText) {
+        onStream(accumulated);
+      }
     }
 
-    const t = response.text;
-    if (t) {
-      const parsed = JSON.parse(t);
-      return parsed as ActionPayload;
+    if (!accumulated) {
+      throw new Error("No response received from Google Gemini API.");
     }
 
-    throw new Error("No text response received from Google Gemini API.");
+    const parsed = JSON.parse(accumulated);
+    return parsed as ActionPayload;
 
   } catch (error: any) {
-    // Structured error handling (Code Quality)
     console.error("Google Gemini Processing Error:", error);
 
-    // Check for Leaked/Revoked API Key Error
     const errMsg = error.message || "";
     if (errMsg.includes("leaked") || errMsg.includes("PERMISSION_DENIED") || error.code === 403 || error.status === 403) {
       throw new Error(
         "🚨 URGENT SECURITY ALERT: API KEY LEAKED\n\n" +
-        "Google's security scanners detected that your Gemini API key was exposed (likely committed to a public GitHub repository or pasted on a public site). To protect your account from unauthorized usage and billing, Google has automatically disabled this key.\n\n" +
-        "How to fix this issue:\n" +
-        "1. Go to Google AI Studio and delete the compromised API key.\n" +
-        "2. Generate a brand new API key.\n" +
-        "3. Update your `.env` file with the new key (`VITE_GEMINI_API_KEY=your_new_key`).\n" +
-        "4. Important: Ensure your `.env` file is listed in `.gitignore` so it never gets committed to public source control again."
+        "Google's security scanners detected that your Gemini API key was exposed. " +
+        "Google has automatically disabled this key.\n\n" +
+        "Fix: Go to Google AI Studio → delete the key → generate a new one → update .env → ensure .env is in .gitignore."
       );
     }
 
     if (errMsg.includes("API key not valid")) {
       throw new Error("The Google Gemini API Key is invalid or expired. Please check your credentials.");
     }
+
+    if (error.name === 'AbortError') throw error;
 
     throw new Error(errMsg || "An unexpected error occurred while communicating with Google services.");
   }
