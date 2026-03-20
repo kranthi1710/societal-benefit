@@ -1,9 +1,10 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, Suspense } from 'react';
 import { ChaosInput } from './components/ChaosInput';
-import { ActionDashboard } from './components/ActionDashboard';
 import { processChaosInput } from './services/geminiService';
 import type { ActionPayload } from './types';
 import { Activity } from 'lucide-react';
+
+const ActionDashboard = React.lazy(() => import('./components/ActionDashboard').then(m => ({ default: m.ActionDashboard })));
 
 function App() {
   const [actions, setActions] = useState<ActionPayload[]>([]);

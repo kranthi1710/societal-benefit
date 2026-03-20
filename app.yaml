@@ -5,6 +5,7 @@ handlers:
   - url: /(.*\..+)$
     static_files: dist/\1
     upload: dist/(.*\..+)$
+    default_expiration: "30d"
   
   # Catch all handler to serve index.html for Single Page Applications (React)
   - url: /.*

@@ -4,7 +4,7 @@ import { compressAndEncodeImage } from "../utils/imageUtils";
 
 // Initialize the Google Gen AI SDK robustly (Google Services Integration)
 const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-if (!apiKey || apiKey === "PASTE_YOUR_GEMINI_API_KEY_HERE") {
+if (!apiKey || apiKey === "AIzaSyBN7MMz8rd0PTyMkBSSTJzac3JEp_Hxaas") {
   console.warn("Google Gen AI API key is missing or invalid. Please check your .env file.");
 }
 
@@ -31,8 +31,9 @@ export const processChaosInput = async (
   abortSignal?: AbortSignal
 ): Promise<ActionPayload> => {
   try {
+    // 1. Separate User Content from System Instruction
     const parts: any[] = [
-      { text: `System Context: You are the Universal Bridge. Your job is to take chaotic input and perfectly extract intent and action into structured JSON schemas.\n\nInput Received: ${text}` }
+      { text: text }
     ];
 
     // Efficiency & Security: Compress large images locally before sending to Google Services
@@ -62,11 +63,26 @@ export const processChaosInput = async (
       }
     }
 
-    // Leveraging Google's Gemini Flash for Efficiency/Low Latency
+    // 2. Optimization: Use native systemInstruction, low temperature, and tuned safety settings
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: parts,
       config: {
+        systemInstruction: "You are the Universal Bridge. Your critical job is to analyze messy, chaotic human input (such as injuries, traffic accidents, emergencies, or raw logs) and extract the core intent into strictly structured, life-saving system JSON actions. Be highly precise and deterministic.",
+        temperature: 0.1, // Low temperature to guarantee deterministic JSON schemas
+        topK: 32,
+        topP: 0.95,
+        safetySettings: [
+          {
+            // Allow emergency dispatch / medical inputs which contain injuries
+            category: "HARM_CATEGORY_DANGEROUS_CONTENT" as any,
+            threshold: "BLOCK_ONLY_HIGH" as any
+          },
+          {
+            category: "HARM_CATEGORY_HARASSMENT" as any,
+            threshold: "BLOCK_ONLY_HIGH" as any
+          }
+        ],
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -112,7 +128,7 @@ export const processChaosInput = async (
   } catch (error: any) {
     // Structured error handling (Code Quality)
     console.error("Google Gemini Processing Error:", error);
-    
+
     // Check for Leaked/Revoked API Key Error
     const errMsg = error.message || "";
     if (errMsg.includes("leaked") || errMsg.includes("PERMISSION_DENIED") || error.code === 403 || error.status === 403) {
@@ -130,7 +146,7 @@ export const processChaosInput = async (
     if (errMsg.includes("API key not valid")) {
       throw new Error("The Google Gemini API Key is invalid or expired. Please check your credentials.");
     }
-    
+
     throw new Error(errMsg || "An unexpected error occurred while communicating with Google services.");
   }
 };
