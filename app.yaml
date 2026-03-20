@@ -1,11 +1,12 @@
 runtime: nodejs20
 
+default_expiration: "30d"
+
 handlers:
   # Serve all static files with url routing from the Vite build output folder (dist)
   - url: /(.*\..+)$
     static_files: dist/\1
     upload: dist/(.*\..+)$
-    default_expiration: "30d"
   
   # Catch all handler to serve index.html for Single Page Applications (React)
   - url: /.*

@@ -31,10 +31,19 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          react: ['react', 'react-dom'],
-          gemini: ['@google/genai'],
-          icons: ['lucide-react']
+        manualChunks(id: string) {
+          if (id.includes('node_modules')) {
+            if (id.includes('react/') || id.includes('react-dom/')) {
+              return 'react';
+            }
+            if (id.includes('@google/genai')) {
+              return 'gemini';
+            }
+            if (id.includes('lucide-react')) {
+              return 'icons';
+            }
+            return 'vendor';
+          }
         }
       }
     }
